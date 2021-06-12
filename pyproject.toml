@@ -7,9 +7,14 @@ authors = ["Juan Miguel Cejuela & tagtog team <welcome@tagtog.net>"]
 [tool.poetry.dependencies]
 python = ">=3.6.2,<4.0"
 flair = "^0.8.0"
+Flask = "^2.0.1"
+bs4 = "^0.0.1"
+requests = "^2.25.1"
 
 [tool.poetry.dev-dependencies]
 ipykernel = "^5.5.5"
+mypy = "^0.902"
+pyflakes = "^2.3.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
