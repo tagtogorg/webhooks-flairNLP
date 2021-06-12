@@ -3,10 +3,10 @@ import requests
 import os
 import json
 from bs4 import BeautifulSoup
-from flair.models import SequenceTagger
+from flair.models import SequenceTagger, TextClassifier
 # from flair.data import Sentence
 from flair.tokenization import SegtokSentenceSplitter
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 
 # -----------------------------------------------------------------------------
 
@@ -69,6 +69,11 @@ def get_class_id(label) -> Optional[str]:
 tagger_name = 'ner-ontonotes-fast'
 TAGTOG_TAGGER_WHO = f'ml:flair-{tagger_name}'
 tagger = SequenceTagger.load(tagger_name)
+#
+classifier_name = 'sentiment-fast'
+TAGTOG_CLASSIFIER_WHO = f'ml:flair-{classifier_name}'
+classifier = TextClassifier(classifier_name)
+#
 sent_splitter = SegtokSentenceSplitter()
 
 # -----------------------------------------------------------------------------
@@ -97,6 +102,21 @@ def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: 
   # print(ret)
   return ret
 
+
+def mk_doclabel(m_id: str, value: Union[str, bool], prob: float, who: str = TAGTOG_CLASSIFIER_WHO, state: str = "pre-added") -> Dict[str, Any]:
+  ret = {
+      # document label id
+      m_id: {
+        'value': value,
+        # entity confidence object (annotation status, who created it and probabilty)
+        'confidence': {'state': state, 'who': [who], 'prob': prob}
+      }
+  }
+
+  # print(ret)
+  return ret
+
+
 def mk_empty_annjson() -> Dict[str, Any]:
   return {
     # Set the document as not confirmed; an annotator will later manually confirm whether the annotations are correct
@@ -109,7 +129,7 @@ def mk_empty_annjson() -> Dict[str, Any]:
 
 
 # Spec: https://docs.tagtog.net/anndoc.html#ann-json
-def mk_annjson(entities: List[Dict[str, Any]] = None, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def mk_annjson(entities: List[Dict[str, Any]] = None, doclabels: Dict[str, Any] = None, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
   annjson = mk_empty_annjson() if in_ann_json is None else in_ann_json
 
   # We do not overwrite incoming existing entities, if any
@@ -158,7 +178,7 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
               entities.append(mk_entity(e_id=e_id, part_id=part_id,
                               text=entity.text, start=adjusted_start, prob=entity_class.score))
 
-  ret = mk_annjson(entities, in_ann_json)
+  ret = mk_annjson(entities=entities, doclabels=None, in_ann_json=in_ann_json)
   # print(ret)
   return ret
 
