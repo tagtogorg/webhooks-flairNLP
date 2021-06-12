@@ -1,11 +1,12 @@
 from flask import Flask, request
 import requests
 import os
+import json
 from bs4 import BeautifulSoup
 from flair.models import SequenceTagger
 # from flair.data import Sentence
 from flair.tokenization import SegtokSentenceSplitter
-from typing import Dict, Any, List
+from typing import Optional, Dict, Any, List
 
 # -----------------------------------------------------------------------------
 
@@ -20,6 +21,7 @@ TAGTOG_DOMAIN_CLOUD = "https://tagtog.net"
 TAGTOG_DOMAIN = os.environ.get('TAGTOG_DOMAIN', TAGTOG_DOMAIN_CLOUD)
 # When this is false, the SSL certification will not be verified (this is useful, for instance, for self-signed localhost tagtog instances)
 VERIFY_SSL_CERT = (TAGTOG_DOMAIN == TAGTOG_DOMAIN_CLOUD)
+MY_PROJECT_URL = f"{TAGTOG_DOMAIN}/{MY_PROJECT_OWNER}/{MY_PROJECT}"
 
 # -----------------------------------------------------------------------------
 
@@ -53,16 +55,22 @@ map_ids_to_names = get_tagtog_anntasks_json_map()
 # we just invert the dictionary
 map_names_to_ids = {name: class_id for class_id, name in map_ids_to_names.items()}
 
-def get_class_id(label):
-  """Translates the spaCy label id into the tagtog entity type id"""
-  return map_names_to_ids.get(label, None)
+def get_class_id(label) -> Optional[str]:
+  """Translates the predicted label id into the tagtog entity class id"""
+  try:
+    return map_names_to_ids[label]
+  except KeyError as e:
+    print(
+        f"ERROR. You must add the entity class {e} to your tagtog project settings ({MY_PROJECT_URL}/-settings#TAB-entity-types) & then restart flask")
+    return None
+
 
 # -----------------------------------------------------------------------------
 
 
 # https://huggingface.co/flair/ner-english-ontonotes-fast
 tagger_name = 'ner-ontonotes-fast'
-TAGTOG_TAGGER_WHO = f'ml:flair-${tagger_name}'
+TAGTOG_TAGGER_WHO = f'ml:flair-{tagger_name}'
 tagger = SequenceTagger.load(tagger_name)
 sent_splitter = SegtokSentenceSplitter()
 
@@ -75,7 +83,7 @@ app = Flask(__name__)
 
 
 def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: str = TAGTOG_TAGGER_WHO, state: str = "pre-added") -> Dict[str, Any]:
-  return {
+  ret = {
     # entity type id
     'classId': e_id,
     'part': part_id,
@@ -85,8 +93,11 @@ def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: 
     'confidence': {'state': state, 'who': [who], 'prob': prob},
     # no entity labels (fields)
     'fields': {},
-    # this is related to the kb_id (knowledge base ID) field from the Span spaCy object
+    # this is related to the kb_id
+    # (knowledge base ID) field from the Span spaCy object
     'normalizations': {}}
+
+  return ret
 
 
 # Spec: https://docs.tagtog.net/anndoc.html#ann-json
@@ -122,19 +133,27 @@ def gen_parts_generator_over_plain_html(plain_html_raw):
 
 
 def annotate(plain_html) -> Dict[str, Any]:
+  entities = []
+
   for part in gen_parts_generator_over_plain_html(plain_html):
     part_id = part.get('id')
     text = part.text
 
     sentences = sent_splitter.split(text)
 
-    # predict NER tags
     tagger.predict(sentences)
 
-    # iterate through sentences and print predicted labels
+    # iterate through sentences and parse out entities
     for sentence in sentences:
-        print(sentence)
-        print(sentence.to_dict(tag_type='ner'))
+        for entity in sentence.to_dict(tag_type='ner')['entities']:
+          for entity_class in entity['labels']:
+            e_id = get_class_id(entity_class.value)
+            if e_id:
+              entities.append(mk_entity(e_id=e_id, part_id=part_id, text=entity['text'], start=entity['start_pos'], prob=entity_class.score))
+
+  ret = mk_annjson(entities)
+  print(ret)
+  return ret
 
 # -----------------------------------------------------------------------------
 
@@ -158,16 +177,14 @@ def respond():
   do_annotate = is_new_doc
 
   if do_annotate:
-    annotate(plain_html)
+    out_ann_json = annotate(plain_html)
 
-      # # Transform the spaCy entities into tagtog entities
-      # annjson['entities'] += get_entities(doc.ents, pipeline, partId)
+    # Pre-annotated document composed of the content and the annotations
+    files = [(docid + '.plain.html', plain_html),
+             (docid + '.ann.json', json.dumps(out_ann_json))]
 
-    # # Pre-annotated document composed of the content and the annotations
-    # files = [(docid + '.plain.html', plain_html), (docid + '.ann.json', json.dumps(annjson))]
-
-    # post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
-    # print(post_response.text)
+    post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
+    print(post_response.text)
 
   return '', 204
 
