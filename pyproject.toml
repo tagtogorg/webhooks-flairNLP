@@ -15,6 +15,7 @@ requests = "^2.25.1"
 ipykernel = "^5.5.5"
 mypy = "^0.902"
 pyflakes = "^2.3.1"
+autopep8 = "^1.5.7"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
