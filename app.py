@@ -97,6 +97,7 @@ def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: 
     # (knowledge base ID) field from the Span spaCy object
     'normalizations': {}}
 
+  # print(ret)
   return ret
 
 
@@ -145,14 +146,18 @@ def annotate(plain_html) -> Dict[str, Any]:
 
     # iterate through sentences and parse out entities
     for sentence in sentences:
-        for entity in sentence.to_dict(tag_type='ner')['entities']:
-          for entity_class in entity['labels']:
+        for entity in sentence.get_spans(label_type='ner'):
+          for entity_class in entity.labels:
             e_id = get_class_id(entity_class.value)
             if e_id:
-              entities.append(mk_entity(e_id=e_id, part_id=part_id, text=entity['text'], start=entity['start_pos'], prob=entity_class.score))
+              # Adjust the entity start offset relative to the original text
+              #   NOTE: flair keeps the offset relative to the original text in the sentences, but unfortunately loses the information in the predicted entities/spans
+              adjusted_start = entity.start_pos + sentence.start_pos
+              entities.append(mk_entity(e_id=e_id, part_id=part_id,
+                              text=entity.text, start=adjusted_start, prob=entity_class.score))
 
   ret = mk_annjson(entities)
-  print(ret)
+  # print(ret)
   return ret
 
 # -----------------------------------------------------------------------------
