@@ -1,8 +1,11 @@
-from flask import Flask, request, Response
-import json
+from flask import Flask, request
 import requests
 import os
 from bs4 import BeautifulSoup
+from flair.models import SequenceTagger
+# from flair.data import Sentence
+from flair.tokenization import SegtokSentenceSplitter
+from typing import Dict, Any, List
 
 # -----------------------------------------------------------------------------
 
@@ -56,9 +59,12 @@ def get_class_id(label):
 
 # -----------------------------------------------------------------------------
 
-# Load the spaCy trained pipeline (https://spacy.io/models/en#en_core_web_sm)
-pipeline = 'en_core_web_sm'
-nlp = spacy.load(pipeline)
+
+# https://huggingface.co/flair/ner-english-ontonotes-fast
+tagger_name = 'ner-ontonotes-fast'
+TAGTOG_TAGGER_WHO = f'ml:flair-${tagger_name}'
+tagger = SequenceTagger.load(tagger_name)
+sent_splitter = SegtokSentenceSplitter()
 
 # -----------------------------------------------------------------------------
 
@@ -67,34 +73,35 @@ app = Flask(__name__)
 
 # -----------------------------------------------------------------------------
 
-def get_entities(spans, pipeline, partId):
-  """
-  Translates a tuple of named entity Span objects (https://spacy.io/api/span) to list of tagtog entities (https://docs.tagtog.net/anndoc.html#ann-json)
-  spans: the named entities in the spaCy doc
-  pipeline: trained pipeline name
-  """
-  default_prob = 1
-  default_part_id = partId
-  default_state = 'pre-added'
-  tagtog_entities = []
 
-  for span in spans:
-    class_id = get_class_id(span.label_)
-    if class_id is not None:
-      tagtog_entities.append({
-          # entity type id
-          'classId': class_id,
-          'part': default_part_id,
-          # entity offset
-          'offsets': [{'start': span.start_char, 'text': span.text}],
-          # entity confidence object (annotation status, who created it and probabilty)
-          'confidence': {'state': default_state, 'who': ['ml:' + pipeline], 'prob': default_prob},
-          # no entity labels (fields)
-          'fields': {},
-          # this is related to the kb_id (knowledge base ID) field from the Span spaCy object
-          'normalizations': {}})
+def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: str = TAGTOG_TAGGER_WHO, state: str = "pre-added") -> Dict[str, Any]:
+  return {
+    # entity type id
+    'classId': e_id,
+    'part': part_id,
+    # entity offset
+    'offsets': [{'start': start, 'text': text}],
+    # entity confidence object (annotation status, who created it and probabilty)
+    'confidence': {'state': state, 'who': [who], 'prob': prob},
+    # no entity labels (fields)
+    'fields': {},
+    # this is related to the kb_id (knowledge base ID) field from the Span spaCy object
+    'normalizations': {}}
 
-  return tagtog_entities
+
+# Spec: https://docs.tagtog.net/anndoc.html#ann-json
+def mk_annjson(entities: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+  if entities is None:
+    entities = []
+
+  annjson = {}
+  # Set the document as not confirmed; an annotator will later manually confirm whether the annotations are correct
+  annjson['anncomplete'] = False
+  annjson['metas'] = {}
+  annjson['relations'] = []
+  annjson['entities'] = entities
+
+  return annjson
 
 
 def _has_part_id(elem):
@@ -113,6 +120,22 @@ def gen_parts_generator_over_plain_html(plain_html_raw):
   for partElem in plain_html_soup.body.find_all(_has_part_id):
     yield partElem
 
+
+def annotate(plain_html) -> Dict[str, Any]:
+  for part in gen_parts_generator_over_plain_html(plain_html):
+    part_id = part.get('id')
+    text = part.text
+
+    sentences = sent_splitter.split(text)
+
+    # predict NER tags
+    tagger.predict(sentences)
+
+    # iterate through sentences and print predicted labels
+    for sentence in sentences:
+        print(sentence)
+        print(sentence.to_dict(tag_type='ner'))
+
 # -----------------------------------------------------------------------------
 
 @app.route('/', methods=['GET'])
@@ -123,41 +146,30 @@ def ping():
 @app.route('/', methods=['POST'])
 def respond():
   print(request.json)
+
   docid = request.json.get('tagtogID')
+  get_params_doc['ids'] = docid
 
-  if docid:
-    # Add the doc ID to the parameters
-    get_params_doc['ids'] = docid
+  # Request plain.html file from tagtog, which contains all the document's content
+  get_response = requests.get(tagtog_docs_API_endpoint, params=get_params_doc, auth=auth, verify=VERIFY_SSL_CERT)
+  plain_html = get_response.content
 
-    get_response = requests.get(tagtog_docs_API_endpoint, params=get_params_doc, auth=auth, verify=VERIFY_SSL_CERT)
-    doc_plain_html = get_response.content
+  is_new_doc = request.headers.get('X-tagtog-onPushSave-status') == 'created'
+  do_annotate = is_new_doc
 
-    # Initialize ann.json (specification: https://docs.tagtog.net/anndoc.html#ann-json)
-    annjson = {}
-    # Set the document as not confirmed, an annotator will manually confirm whether the annotations are correct
-    annjson['anncomplete'] = False
-    annjson['metas'] = {}
-    annjson['relations'] = []
-    # Transform the spaCy entities into tagtog entities
-    annjson['entities'] = []
+  if do_annotate:
+    annotate(plain_html)
 
-    for part in gen_parts_generator_over_plain_html(doc_plain_html):
-      partId = part.get('id')
-      text = part.text
+      # # Transform the spaCy entities into tagtog entities
+      # annjson['entities'] += get_entities(doc.ents, pipeline, partId)
 
-      # apply the spaCy model to the text
-      doc = nlp(text)
+    # # Pre-annotated document composed of the content and the annotations
+    # files = [(docid + '.plain.html', plain_html), (docid + '.ann.json', json.dumps(annjson))]
 
-      # Transform the spaCy entities into tagtog entities
-      annjson['entities'] += get_entities(doc.ents, pipeline, partId)
+    # post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
+    # print(post_response.text)
 
-    # Pre-annotated document composed of the content and the annotations
-    files = [(docid + '.plain.html', doc_plain_html), (docid + '.ann.json', json.dumps(annjson))]
-
-    post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
-    print(post_response.text)
-
-  return Response()
+  return '', 204
 
 # -----------------------------------------------------------------------------
 
