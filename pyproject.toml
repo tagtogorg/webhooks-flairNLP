@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "test-flair"
+version = "0.1.0"
+description = ""
+authors = ["Juan Miguel Cejuela & tagtog team <welcome@tagtog.net>"]
+
+[tool.poetry.dependencies]
+python = ">=3.6.2,<4.0"
+flair = "^0.8.0"
+
+[tool.poetry.dev-dependencies]
+ipykernel = "^5.5.5"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
