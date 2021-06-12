@@ -11,12 +11,12 @@ MY_USERNAME = os.environ['MY_TAGTOG_USERNAME']
 MY_PASSWORD = os.environ['MY_TAGTOG_PASSWORD']
 MY_PROJECT = os.environ['MY_TAGTOG_PROJECT']
 # the project owner could be a different user, but for simplicity we assume it's the same as your username
-MY_PROJECT_OWNER = MY_USERNAME
+MY_PROJECT_OWNER = os.environ.get('MY_PROJECT_OWNER', MY_USERNAME)
 
 TAGTOG_DOMAIN_CLOUD = "https://tagtog.net"
 TAGTOG_DOMAIN = os.environ.get('TAGTOG_DOMAIN', TAGTOG_DOMAIN_CLOUD)
 # When this is false, the SSL certification will not be verified (this is useful, for instance, for self-signed localhost tagtog instances)
-VERIFY_SSL_CERT = TAGTOG_DOMAIN == TAGTOG_DOMAIN_CLOUD
+VERIFY_SSL_CERT = (TAGTOG_DOMAIN == TAGTOG_DOMAIN_CLOUD)
 
 # -----------------------------------------------------------------------------
 
