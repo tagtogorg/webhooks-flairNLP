@@ -1,6 +1,5 @@
 from flask import Flask, request, Response
 import json
-import spacy
 import requests
 import os
 from bs4 import BeautifulSoup
