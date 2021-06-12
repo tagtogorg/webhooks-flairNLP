@@ -33,9 +33,6 @@ tagtog_sets_API_endpoint = f"{TAGTOG_DOMAIN}/-api/settings/v1"
 
 default_API_params = {'owner': MY_PROJECT_OWNER, 'project': MY_PROJECT}
 
-# Parameters for the GET API call to get a document
-# (see https://docs.tagtog.net/API_documents_v1.html#examples-get-the-original-document-by-document-id)
-get_params_doc = {**default_API_params, **{'output': 'plain.html'}}
 # Parameters for the POST API call to import a pre-annotated document
 # (see https://docs.tagtog.net/API_documents_v1.html#import-annotated-documents-post)
 post_params_doc = {**default_API_params, **{'output': 'null', 'format': 'anndoc'}}
@@ -100,18 +97,23 @@ def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: 
   # print(ret)
   return ret
 
+def mk_empty_annjson() -> Dict[str, Any]:
+  return {
+    # Set the document as not confirmed; an annotator will later manually confirm whether the annotations are correct
+    'anncomplete': False,
+    'sources': [],
+    'metas': {},
+    'relations': [],
+    'entities': []
+  }
+
 
 # Spec: https://docs.tagtog.net/anndoc.html#ann-json
-def mk_annjson(entities: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-  if entities is None:
-    entities = []
+def mk_annjson(entities: List[Dict[str, Any]] = None, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+  annjson = mk_empty_annjson() if in_ann_json is None else in_ann_json
 
-  annjson = {}
-  # Set the document as not confirmed; an annotator will later manually confirm whether the annotations are correct
-  annjson['anncomplete'] = False
-  annjson['metas'] = {}
-  annjson['relations'] = []
-  annjson['entities'] = entities
+  # We do not overwrite incoming existing entities, if any
+  annjson['entities'] += entities
 
   return annjson
 
@@ -133,7 +135,7 @@ def gen_parts_generator_over_plain_html(plain_html_raw):
     yield partElem
 
 
-def annotate(plain_html) -> Dict[str, Any]:
+def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
   entities = []
 
   for part in gen_parts_generator_over_plain_html(plain_html):
@@ -156,7 +158,7 @@ def annotate(plain_html) -> Dict[str, Any]:
               entities.append(mk_entity(e_id=e_id, part_id=part_id,
                               text=entity.text, start=adjusted_start, prob=entity_class.score))
 
-  ret = mk_annjson(entities)
+  ret = mk_annjson(entities, in_ann_json)
   # print(ret)
   return ret
 
@@ -172,22 +174,35 @@ def respond():
   print(request.json)
 
   docid = request.json.get('tagtogID')
-  get_params_doc['ids'] = docid
+
+  # Parameters for the GET API call to get a document
+  # (see https://docs.tagtog.net/API_documents_v1.html#examples-get-the-original-document-by-document-id)
+  get_params = {**default_API_params, **{'ids': docid}}
+  get_params_plain_doc = {**get_params, **{'output': 'plain.html'}}
+  get_params_ann_doc = {**get_params, **{'output': 'ann.json'}}
 
   # Request plain.html file from tagtog, which contains all the document's content
-  get_response = requests.get(tagtog_docs_API_endpoint, params=get_params_doc, auth=auth, verify=VERIFY_SSL_CERT)
-  plain_html = get_response.content
+  get_plain_response = requests.get(
+      tagtog_docs_API_endpoint, params=get_params_plain_doc, auth=auth, verify=VERIFY_SSL_CERT)
+  plain_html = get_plain_response.content
+
+  # Request ann.json file from tagtog, which might already contain pre-annotations
+  get_ann_response = requests.get(
+      tagtog_docs_API_endpoint, params=get_params_ann_doc, auth=auth, verify=VERIFY_SSL_CERT)
+  in_ann_json = get_ann_response.json()
 
   is_new_doc = request.headers.get('X-tagtog-onPushSave-status') == 'created'
-  do_annotate = is_new_doc
 
-  if do_annotate:
-    out_ann_json = annotate(plain_html)
+  if is_new_doc:
+    # annotate
+
+    out_ann_json = annotate(plain_html, in_ann_json)
 
     # Pre-annotated document composed of the content and the annotations
     files = [(docid + '.plain.html', plain_html),
              (docid + '.ann.json', json.dumps(out_ann_json))]
 
+    # Upload to tagtog our predicted annotations
     post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
     print(post_response.text)
 
