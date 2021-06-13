@@ -228,7 +228,7 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
 
   print(doc_labels)
 
-  ret = mk_annjson(entities=entities, doclabels=doc_label,
+  ret = mk_annjson(entities=entities, doclabels=doc_labels,
                    in_ann_json=in_ann_json)
   # print(ret)
   return ret
