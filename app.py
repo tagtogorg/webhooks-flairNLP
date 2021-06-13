@@ -1,3 +1,4 @@
+from flair.data import Label
 from flask import Flask, request
 import requests
 import os
@@ -6,7 +7,7 @@ from bs4 import BeautifulSoup
 from flair.models import SequenceTagger, TextClassifier
 # from flair.data import Sentence
 from flair.tokenization import SegtokSentenceSplitter
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Tuple, Union
 
 # -----------------------------------------------------------------------------
 
@@ -88,6 +89,29 @@ app = Flask(__name__)
 # -----------------------------------------------------------------------------
 
 
+def add_vote_for_flair_label(all_label_votes: Dict[str, Dict[str, List[float]]], label_name: str, label: Label) -> Dict[str, Dict[str, List[float]]]:
+  votes = all_label_votes[label_name]
+
+  scores = votes.get(label.value, [0, 0])
+  scores[0] += label.score
+  scores[1] += 1
+  votes[label.value] = scores
+
+  all_label_votes[label_name] = votes
+
+
+def decide_votes_winners(all_label_votes: Dict[str, Dict[str, List[float]]]) -> Dict[str, Tuple[str, float]]:
+  ret = {}
+  for label_name in all_label_votes:
+    scores = all_label_votes[label_name]
+    winner = max(scores, key=lambda tuple: tuple[0])
+    winner_scores = scores[winner]
+    winner_prob = winner_scores[0] / winner_scores[1]
+    ret[label_name] = (winner, winner_prob)
+
+  return ret
+
+
 def mk_entity(e_id: str, part_id: str, text: str, start: int, prob: float, who: str = TAGTOG_TAGGER_WHO, state: str = "pre-added") -> Dict[str, Any]:
   ret = {
     # entity type id
@@ -164,7 +188,7 @@ def gen_parts_generator_over_plain_html(plain_html_raw):
 
 def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
   entities = []
-  doc_label = {}
+  all_label_votes = {DOC_LABEL_SENTIMENT_NAME: {}}
 
   for part in gen_parts_generator_over_plain_html(plain_html):
     part_id = part.get('id')
@@ -178,9 +202,7 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
     # iterate through sentences and parse out entities
     for sentence in sentences:
         for label in sentence.get_labels():
-          m_id = get_class_id(DOC_LABEL_SENTIMENT_NAME)
-          if m_id:
-            doc_label = mk_doclabel(m_id, label.value, label.score)
+          add_vote_for_flair_label(all_label_votes, DOC_LABEL_SENTIMENT_NAME, label)
 
         for entity in sentence.get_spans(label_type='ner'):
           for entity_class in entity.labels:
@@ -192,6 +214,19 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
               entity = mk_entity(e_id=e_id, part_id=part_id,
                                  text=entity.text, start=adjusted_start, prob=entity_class.score)
               entities.append(entity)
+
+  print(all_label_votes)
+  winners = decide_votes_winners(all_label_votes)
+  print(winners)
+
+  doc_labels = {}
+  for label_name, (value, prob) in winners.items():
+    m_id = get_class_id(label_name)
+    if m_id:
+      doc_label = mk_doclabel(m_id, value, prob)
+      doc_labels = {**doc_labels, **doc_label}
+
+  print(doc_labels)
 
   ret = mk_annjson(entities=entities, doclabels=doc_label,
                    in_ann_json=in_ann_json)
