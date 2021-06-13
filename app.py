@@ -39,6 +39,17 @@ post_params_doc = {**default_API_params, **{'output': 'null', 'format': 'anndoc'
 
 # -----------------------------------------------------------------------------
 
+# https://huggingface.co/flair/ner-english-ontonotes-fast
+tagger_name = 'ner-ontonotes-fast'
+TAGTOG_TAGGER_WHO = f'ml:flair-{tagger_name}'
+
+classifier_name = 'sentiment-fast'
+TAGTOG_CLASSIFIER_WHO = f'ml:flair-{classifier_name}'
+
+DOC_LABEL_SENTIMENT_NAME = 'SENTIMENT'
+
+# -----------------------------------------------------------------------------
+
 # See: https://docs.tagtog.net/API_settings_v1.html#annotations-legend
 def get_tagtog_anntasks_json_map():
   res = requests.get(f"{tagtog_sets_API_endpoint}/annotationsLegend", params=default_API_params, auth=auth, verify=VERIFY_SSL_CERT)
@@ -56,24 +67,17 @@ def get_class_id(label) -> Optional[str]:
   """Translates the predicted label id into the tagtog entity class id"""
   try:
     return map_names_to_ids[label]
-  except KeyError as e:
+  except KeyError as name:
     print(
-        f"ERROR. You must add the entity class {e} to your tagtog project settings ({MY_PROJECT_URL}/-settings#TAB-entity-types) & then restart flask")
+        f"ERROR. You must add the label {name} to your tagtog project settings ({MY_PROJECT_URL}/-settings) & then restart flask")
     return None
 
 
 # -----------------------------------------------------------------------------
 
-
-# https://huggingface.co/flair/ner-english-ontonotes-fast
-tagger_name = 'ner-ontonotes-fast'
-TAGTOG_TAGGER_WHO = f'ml:flair-{tagger_name}'
+# Initialize flair models
 tagger = SequenceTagger.load(tagger_name)
-#
-classifier_name = 'sentiment-fast'
-TAGTOG_CLASSIFIER_WHO = f'ml:flair-{classifier_name}'
-classifier = TextClassifier(classifier_name)
-#
+classifier = TextClassifier.load(classifier_name)
 sent_splitter = SegtokSentenceSplitter()
 
 # -----------------------------------------------------------------------------
@@ -132,8 +136,11 @@ def mk_empty_annjson() -> Dict[str, Any]:
 def mk_annjson(entities: List[Dict[str, Any]] = None, doclabels: Dict[str, Any] = None, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
   annjson = mk_empty_annjson() if in_ann_json is None else in_ann_json
 
-  # We do not overwrite incoming existing entities, if any
-  annjson['entities'] += entities
+  # We merge the new annotations with existing ones, if any
+  if doclabels is not None:
+    annjson['metas'] = {**annjson['metas'], **doclabels}
+  if entities is not None:
+    annjson['entities'] += entities
 
   return annjson
 
@@ -157,6 +164,7 @@ def gen_parts_generator_over_plain_html(plain_html_raw):
 
 def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
   entities = []
+  doc_label = {}
 
   for part in gen_parts_generator_over_plain_html(plain_html):
     part_id = part.get('id')
@@ -165,9 +173,15 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
     sentences = sent_splitter.split(text)
 
     tagger.predict(sentences)
+    classifier.predict(sentences)
 
     # iterate through sentences and parse out entities
     for sentence in sentences:
+        for label in sentence.get_labels():
+          m_id = get_class_id(DOC_LABEL_SENTIMENT_NAME)
+          if m_id:
+            doc_label = mk_doclabel(m_id, label.value, label.score)
+
         for entity in sentence.get_spans(label_type='ner'):
           for entity_class in entity.labels:
             e_id = get_class_id(entity_class.value)
@@ -175,10 +189,12 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
               # Adjust the entity start offset relative to the original text
               #   NOTE: flair keeps the offset relative to the original text in the sentences, but unfortunately loses the information in the predicted entities/spans
               adjusted_start = entity.start_pos + sentence.start_pos
-              entities.append(mk_entity(e_id=e_id, part_id=part_id,
-                              text=entity.text, start=adjusted_start, prob=entity_class.score))
+              entity = mk_entity(e_id=e_id, part_id=part_id,
+                                 text=entity.text, start=adjusted_start, prob=entity_class.score)
+              entities.append(entity)
 
-  ret = mk_annjson(entities=entities, doclabels=None, in_ann_json=in_ann_json)
+  ret = mk_annjson(entities=entities, doclabels=doc_label,
+                   in_ann_json=in_ann_json)
   # print(ret)
   return ret
 
