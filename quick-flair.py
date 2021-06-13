@@ -1,17 +1,27 @@
-from flair.models import SequenceTagger
+from flair.models import SequenceTagger, TextClassifier
 from flair.data import Sentence
 
 tagger = SequenceTagger.load('ner-ontonotes-fast')
+classifier = TextClassifier.load('sentiment-fast')
 
-sentence = Sentence('George Washington went to Washington.')
+texts = [
+    "Today is quite an exciting day",
+    "George Washington went to Washington.",
+    "enormously entertaining for moviegoers of any age.",
+    "Terrible!!!",
+    "Nothing to say",
+    "I'm bored",
+    "I rather do not say my opinion"
+    "I love my iPhone"
+    ]
 
-# predict NER tags
-tagger.predict(sentence)
+sentences = [Sentence(text) for text in texts]
 
-# print sentence with predicted tags
-print(sentence.to_tagged_string())
+tagger.predict(sentences)
+classifier.predict(sentences)
 
-for entity in sentence.get_spans('ner'):
-    print(entity)
+for sentence in sentences:
+    print(sentence.annotation_layers)
+    print(sentence.get_spans())
+    print(sentence.get_labels())
 
-print(sentence.to_dict(tag_type='ner'))
