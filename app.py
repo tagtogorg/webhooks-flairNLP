@@ -63,6 +63,7 @@ def get_tagtog_anntasks_json_map():
 map_ids_to_names = get_tagtog_anntasks_json_map()
 # we just invert the dictionary
 map_names_to_ids = {name: class_id for class_id, name in map_ids_to_names.items()}
+print(f"The tagtog project has these annotation labels: {map_ids_to_names}")
 
 def get_class_id(label) -> Optional[str]:
   """Translates the predicted label id into the tagtog entity class id"""
@@ -260,7 +261,10 @@ def respond():
   # Request ann.json file from tagtog, which might already contain pre-annotations
   get_ann_response = requests.get(
       tagtog_docs_API_endpoint, params=get_params_ann_doc, auth=auth, verify=VERIFY_SSL_CERT)
-  in_ann_json = get_ann_response.json()
+  try:
+    in_ann_json = get_ann_response.json()
+  except:
+    in_ann_json = None
 
   is_new_doc = request.headers.get('X-tagtog-onPushSave-status') == 'created'
 
