@@ -14,8 +14,6 @@ With this repo, you will learn how to setup a tagtog webhook and how to manage a
 
 1. Create a virtual environment
 ```shell
-# Create the virtual environment (.venv)
-# Python ^3.6
 poetry shell
 ```
 
