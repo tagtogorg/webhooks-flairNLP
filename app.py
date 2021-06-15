@@ -243,7 +243,7 @@ def ping():
 
 @app.route('/', methods=['POST'])
 def respond():
-  print(request.json)
+  print(f"Received a webhook signal: {request.json}")
 
   docid = request.json.get('tagtogID')
 
