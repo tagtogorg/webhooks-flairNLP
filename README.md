@@ -1,6 +1,6 @@
 # webhooks-flairNLP
 
-Example showing how to connect your NLP models to [tagtog](https://www.tagtog.net). We will use Python, [Flask](https://flask.palletsprojects.com/), [flair](https://github.com/flairNLP/flair), [tagtog webhooks](https://docs.tagtog.net/projects.html#webhooks) and [tagtog API](https://docs.tagtog.net/API_documents_v1.html).
+Example showing how to connect your NLP models to [tagtog](https://www.tagtog.net). We will use Python, [flair](https://github.com/flairNLP/flair), [Flask](https://flask.palletsprojects.com/), [Poetry](https://python-poetry.org), [tagtog webhooks](https://docs.tagtog.net/projects.html#webhooks), and the [tagtog API](https://docs.tagtog.net/API_documents_v1.html).
 
 An introduction to webhooks and the full step-by-step guide is here: https://tagtog.medium.com/connect-your-nlp-models-to-tagtog-using-webhooks-13d422ae4dff
 
@@ -16,15 +16,12 @@ With this repo, you will learn how to setup a tagtog webhook and how to manage a
 ```shell
 # Create the virtual environment (.venv)
 # Python ^3.6
-python3 -m venv .venv
-
-# Activate the virtualenv (macOS & Linux)
-source .venv/bin/activate
+poetry shell
 ```
 
 2. Install the dependencies
 ```shell
-pip install -r requirements.txt
+poetry install
 ```
 
 3. Create a project at [tagtog.net](https://www.tagtog.net)
