@@ -63,7 +63,8 @@ def get_tagtog_anntasks_json_map():
 map_ids_to_names = get_tagtog_anntasks_json_map()
 # we just invert the dictionary
 map_names_to_ids = {name: class_id for class_id, name in map_ids_to_names.items()}
-print(f"The tagtog project has these annotation labels: {map_ids_to_names}")
+print(
+    f"The tagtog project ({MY_PROJECT}) has these annotation labels: {map_ids_to_names}")
 
 def get_class_id(label) -> Optional[str]:
   """Translates the predicted label id into the tagtog entity class id"""
