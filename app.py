@@ -272,8 +272,6 @@ def respond():
 
   is_new_doc = request.headers.get('X-tagtog-onPushSave-status') == 'created'
 
-  print("***", is_master, is_master_confirmed)
-
   if is_new_doc:
     # Annotate
 
