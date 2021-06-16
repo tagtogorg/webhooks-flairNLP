@@ -39,9 +39,10 @@ export MY_TAGTOG_PROJECT='project_name'
 
 6. Run the app
 ```shell
+# TODO (2021-06-16 JMC) load models only once even if in development mode
 export FLASK_APP=app.py
 export FLASK_ENV=development  # this enables live reloading
-flask run --port 5005
+flask run --host=0.0.0.0 --port 5005  # you need host 0.0.0.0 if you also want to allow connections from external computerss
 ```
 
 7. In another console, make your app reachable from the outside using [ngrok](https://ngrok.com/)

@@ -216,9 +216,9 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
                                  text=entity.text, start=adjusted_start, prob=entity_class.score)
               entities.append(entity)
 
-  print(all_label_votes)
+  # print(all_label_votes)
   winners = decide_votes_winners(all_label_votes)
-  print(winners)
+  # print(winners)
 
   doc_labels = {}
   for label_name, (value, prob) in winners.items():
@@ -227,7 +227,7 @@ def annotate(plain_html, in_ann_json: Optional[Dict[str, Any]] = None) -> Dict[s
       doc_label = mk_doclabel(m_id, value, prob)
       doc_labels = {**doc_labels, **doc_label}
 
-  print(doc_labels)
+  # print(doc_labels)
 
   ret = mk_annjson(entities=entities, doclabels=doc_labels,
                    in_ann_json=in_ann_json)
@@ -245,7 +245,7 @@ def ping():
 def respond():
   print(f"Received a webhook signal: {request.json}")
 
-  docid = request.json.get('tagtogID')
+  docid = request.json.get('docid')
 
   # Parameters for the GET API call to get a document
   # (see https://docs.tagtog.net/API_documents_v1.html#examples-get-the-original-document-by-document-id)
@@ -263,13 +263,19 @@ def respond():
       tagtog_docs_API_endpoint, params=get_params_ann_doc, auth=auth, verify=VERIFY_SSL_CERT)
   try:
     in_ann_json = get_ann_response.json()
+    member: str = request.json.get('member')
+    is_master = (member == "" or member == "master")
+    is_master_confirmed: bool = is_master and in_ann_json['anncomplete']
   except:
     in_ann_json = None
+    is_master_confirmed: bool = False
 
   is_new_doc = request.headers.get('X-tagtog-onPushSave-status') == 'created'
 
+  print("***", is_master, is_master_confirmed)
+
   if is_new_doc:
-    # annotate
+    # Annotate
 
     out_ann_json = annotate(plain_html, in_ann_json)
 
@@ -280,6 +286,10 @@ def respond():
     # Upload to tagtog our predicted annotations
     post_response = requests.post(tagtog_docs_API_endpoint, params=post_params_doc, auth=auth, files=files, verify=VERIFY_SSL_CERT)
     print(post_response.text)
+
+  elif is_master_confirmed:
+    # Train
+    print("Train my models...")
 
   return '', 204
 
