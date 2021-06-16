@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "test-flair"
+name = "webhooks-flairNLP"
 version = "0.1.0"
 description = ""
 authors = ["Juan Miguel Cejuela & tagtog team <welcome@tagtog.net>"]
